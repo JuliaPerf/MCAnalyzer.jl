@@ -34,7 +34,7 @@ end
 analyze(mysum, Tuple{Vector{Float64}})
 ```
 
-```
+```julia
 using IACA
 
 function f(y::Float64)
@@ -50,7 +50,7 @@ end
 analyze(f, Tuple{Float64})
 ```
 
-```
+```julia
 using IACA
 
 function g(y::Float64)
