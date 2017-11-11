@@ -6,8 +6,7 @@
 ## Installation 
 First manually install **IACA** from https://software.intel.com/en-us/articles/intel-architecture-code-analyzer and then install this package.
 If `iaca` is not on your path set the environment variable `IACA_PATH=...` to point to the `iaca` binary that you downloaded from Intel.
-
-`IACA.jl` depends on `LLVM.jl`, which in turns requires a **source** build of Julia (see )
+`IACA.jl` depends on `LLVM.jl`, which in turns requires a **source** build of Julia (see https://maleadt.github.io/LLVM.jl/stable/)
 
 ## Usage
 
@@ -15,6 +14,10 @@ If `iaca` is not on your path set the environment variable `IACA_PATH=...` to po
 `iaca` will then analyse the generated object file and only analyse the parts in between the two markers.
 
 To invoke `iaca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
+
+### Caveats
+`iaca` 3.0 currently only supports *throughput* analysis. This means that currently it is only useful to analyse loops.
+`iaca_start()` has to be in the beginning of the loop body and `iaca_end()` has to be after the loop. `iaca` will then treat the loop as an infite loop. 
 
 ### Examples
 
