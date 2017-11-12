@@ -35,12 +35,13 @@ end
 code_llvm(@nospecialize(func), @nospecialize(types=Tuple); kwargs...) = code_llvm(STDOUT, func, types; kwargs...)
 
 """
-    code_native([io], f, types; cpu = "skylake", optimize! = jloptimize!)
+    code_native([io], f, types; cpu = "skylake", optimize! = jloptimize!, dump_module = false, verbose = false)
 
 Emits assembly for the given `cpu` and `optimize!` pass pipline. 
 """
 function code_native(io::IO, @nospecialize(func::Core.Function), @nospecialize(types=Tuple);
-                     cpu::String = "skylake", optimize!::Core.Function = jloptimize!)
+                     cpu::String = "skylake", optimize!::Core.Function = jloptimize!,
+                     dump_module::Bool = false, verbose::Bool = false)
 
     backwardsCompat && error("On 0.6 use Base.code_native")
 
@@ -48,10 +49,27 @@ function code_native(io::IO, @nospecialize(func::Core.Function), @nospecialize(t
     mod, llvmf = irgen(func, tt)
     asm = target_machine(cpu) do tm
         optimize!(tm, mod)
+        asm_verbosity!(tm, verbose)
         LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile)
-        # TODO: Filter!
     end
-    write(io, asm)
+    dump_module && write(io, asm)
+
+    # filter the assembly file
+    foundStart = false
+    start = string(LLVM.name(llvmf), ":")
+    asmbuf = IOBuffer(asm)
+    for line in eachline(asmbuf)
+        if !foundStart
+            foundStart = startswith(line, start)
+        end
+        if foundStart
+            write(io, line)
+            if startswith(line, ".Lfunc_end")
+                break
+            end
+            write(io, '\n')
+        end
+    end
 end
 code_native(@nospecialize(func), @nospecialize(types=Tuple); kwargs...) =
 code_native(STDOUT, func, types; kwargs...)
