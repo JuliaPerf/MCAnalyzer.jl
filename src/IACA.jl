@@ -150,8 +150,8 @@ function gen_iaca(code, name)
         .byte 0x64, 0x67, 0x90
         """
     # defined in iacaMarks.h as volatile with a memory clobber
-    # dirflag, fpsr, flags are taken from clang
-    asm = InlineAsm(ft, raw_asm, #=constraints=# "~{memory},~{dirflag},~{fpsr},~{flags}", #=side-effects=# true )
+    # Without the ebx clobber functions seqfault.
+    asm = InlineAsm(ft, raw_asm, #=constraints=# "~{memory},~{ebx}", #=side-effects=# true )
     llvmf = LLVM.Function(mod, "iaca_$name", ft)
 
     Builder(jlctx[]) do builder
