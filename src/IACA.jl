@@ -53,11 +53,6 @@ analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=default_op=# false, #=optimize!=#
 ````
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt = true, optimize! = jloptimize!)
-    mod = parse(LLVM.Module,
-                Base._dump_function(func, tt,
-                                    #=native=#false, #=wrapper=#false, #=strip=#false,
-                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#default_opt), jlctx[])
-
     iaca_path = "iaca"
     if haskey(ENV, "IACA_PATH")
         iaca_path = ENV["IACA_PATH"]
@@ -72,18 +67,28 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt
     )
     @assert haskey(cpus, march) "Arch: $march not supported"
 
-    # Construct target machine
-    triple = "x86_64-unknown-linux-gnu"
-    target = LLVM.Target(triple)
-    
-    LLVM.TargetMachine(target, triple, cpus[march], #=features=#) do tm
-        !default_opt && optimize!(tm, mod, )
-        mktempdir() do dir
-            objfile = joinpath(dir, "a.out")
-            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
-            Base.run(`$iaca_path -arch $march $objfile`)
-        end
+    mktempdir() do dir
+        objfile = joinpath(dir, "a.out")
+        tm, mod = irgen(func, tt, cpus[march], "", default_opt, optimize!)
+        LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
+        Base.run(`$iaca_path -arch $march $objfile`)
     end
+end
+
+function irgen(@nospecialize(func), @nospecialize(tt), cpu, features, default_opt, optimize!)
+    params = Base.CodegenParams(cached=false)
+
+    mod = parse(LLVM.Module,
+                Base._dump_function(func, tt,
+                                    #=native=#false, #=wrapper=#false, #=strip=#false,
+                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#default_opt, params), jlctx[])
+    
+    triple = LLVM.triple(mod)
+    target = LLVM.Target(triple)
+    tm = LLVM.TargetMachine(target, triple, cpu, features)
+    !default_opt && optimize!(tm, mod)
+
+    return tm, mod
 end
 
 """
