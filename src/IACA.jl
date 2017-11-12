@@ -69,11 +69,13 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt
 
     mktempdir() do dir
         objfile = joinpath(dir, "a.out")
-        tm, mod = irgen(func, tt, cpus[march], "", default_opt, optimize!)
+        tm, mod, _ = irgen(func, tt, cpus[march], "", default_opt, optimize!)
         LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
         Base.run(`$iaca_path -arch $march $objfile`)
     end
 end
+
+nameof(f::Core.Function) = String(typeof(f).name.mt.name)
 
 function irgen(@nospecialize(func), @nospecialize(tt), cpu, features, default_opt, optimize!)
     params = Base.CodegenParams(cached=false)
@@ -82,13 +84,33 @@ function irgen(@nospecialize(func), @nospecialize(tt), cpu, features, default_op
                 Base._dump_function(func, tt,
                                     #=native=#false, #=wrapper=#false, #=strip=#false,
                                     #=dump_module=#true, #=syntax=#:att, #=optimize=#default_opt, params), jlctx[])
-    
+
+    fn = nameof(func)
+    julia_fs = Dict{String,Dict{String,LLVM.Function}}()
+    r = r"^(?P<cc>(jl|japi|jsys|julia)[^\W_]*)_(?P<name>.+)_\d+$"
+    for llvmf in functions(mod)
+        m = match(r, LLVM.name(llvmf))
+        if m != nothing
+            fns = get!(julia_fs, m[:name], Dict{String,LLVM.Function}())
+            fns[m[:cc]] = llvmf
+        end
+    end
+
+    # find the native entry-point function
+    haskey(julia_fs, fn) || error("could not find compiled function for $fn")
+    entry_fs = julia_fs[fn]
+    if !haskey(entry_fs, "julia")
+        error("could not find native function for $fn, available CCs are: ",
+              join(keys(entry_fs), ", "))
+    end
+    llvmf = entry_fs["julia"]
+
     triple = LLVM.triple(mod)
     target = LLVM.Target(triple)
     tm = LLVM.TargetMachine(target, triple, cpu, features)
     !default_opt && optimize!(tm, mod)
 
-    return tm, mod
+    return tm, mod, llvmf
 end
 
 """
