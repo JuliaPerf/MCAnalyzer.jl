@@ -6,13 +6,14 @@ using LLVM
 import Compat: @nospecialize
 
 const jlctx = Ref{LLVM.Context}()
-const opt_level = Ref{Int}()
+const optlevel = Ref{Int}()
+const backwardsCompat = Base.VERSION < v"0.7.0-DEV.1494"
 
 function __init__()
     jlctx[] = LLVM.Context(convert(LLVM.API.LLVMContextRef,
                                    cglobal(:jl_LLVMContext, Void)))
 
-    opt_level[] = Base.JLOptions().opt_level
+    optlevel[] = Base.JLOptions().opt_level
 end
 
 """
@@ -38,21 +39,21 @@ end
 analyze(mysum, Tuple{Vector{Float64}})
 ```
 
-# Advanced usage
-## Switching opt-level (0.7 only)
+# Advanced usage (0.7 only)
+## Switching opt-level
 ```julia
-IACA.opt_level[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL, #=default_op=# false)
+IACA.optlevel[] = 3
+analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 ````
 
 ## Changing the optimization pipeline
 
 ```julia
 myoptimize!(tm, mod) = ...
-analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=default_op=# false, #=optimize!=# myoptimize!)
+analyze(mysum. Tuple{Vector{Float64}}, :SKL, myoptimize!)
 ````
 """
-function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt = true, optimize! = jloptimize!)
+function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
     iaca_path = "iaca"
     if haskey(ENV, "IACA_PATH")
         iaca_path = ENV["IACA_PATH"]
@@ -67,23 +68,38 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt
     )
     @assert haskey(cpus, march) "Arch: $march not supported"
 
+    if backwardsCompat && 
+       Base.Sys.cpu_name != cpus[march]
+       warn("On 0.6 we can't change the CPU LLVM is optimizing for. Please use the shorthand for your CPU: $(Base.Sys.cpu_name)")
+    end
+
     mktempdir() do dir
         objfile = joinpath(dir, "a.out")
-        tm, mod, _ = irgen(func, tt, cpus[march], "", default_opt, optimize!)
-        LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
+        mod, _ = irgen(func, tt)
+        target_machine(cpus[march]) do tm
+            @show typeof(optimize!)
+            backwardsCompat || optimize!(tm, mod) # don't run the optimizer on 0.6
+            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
+        end
         Base.run(`$iaca_path -arch $march $objfile`)
     end
 end
 
 nameof(f::Core.Function) = String(typeof(f).name.mt.name)
 
-function irgen(@nospecialize(func), @nospecialize(tt), cpu, features, default_opt, optimize!)
+function target_machine(lambda, cpu, features = "")
+    triple = LLVM.triple()
+    target = LLVM.Target(triple)
+    LLVM.TargetMachine(lambda, target, triple, cpu, features)
+end
+
+function irgen(@nospecialize(func), @nospecialize(tt), optimize=backwardsCompat #=Remove when 0.6 support is dropped=#)
     params = Base.CodegenParams(cached=false)
 
     mod = parse(LLVM.Module,
                 Base._dump_function(func, tt,
                                     #=native=#false, #=wrapper=#false, #=strip=#false,
-                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#default_opt, params), jlctx[])
+                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#optimize, params), jlctx[])
 
     fn = nameof(func)
     julia_fs = Dict{String,Dict{String,LLVM.Function}}()
@@ -105,12 +121,7 @@ function irgen(@nospecialize(func), @nospecialize(tt), cpu, features, default_op
     end
     llvmf = entry_fs["julia"]
 
-    triple = LLVM.triple(mod)
-    target = LLVM.Target(triple)
-    tm = LLVM.TargetMachine(target, triple, cpu, features)
-    !default_opt && optimize!(tm, mod)
-
-    return tm, mod, llvmf
+    return mod, llvmf
 end
 
 """
@@ -119,27 +130,13 @@ end
 Runs the Julia optimizer pipeline.
 """
 function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
+    backwardsCompat && error("jloptimize! only works on 0.7")
     ModulePassManager() do pm
-        if Base.VERSION >= v"0.7.0-DEV.1494"
-            add_library_info!(pm, triple(mod))
-            add_transform_info!(pm, tm)
-            ccall(:jl_add_optimization_passes, Void,
-                  (LLVM.API.LLVMPassManagerRef, Cint),
-                  LLVM.ref(pm), opt_level[])
-        else
-            add_transform_info!(pm, tm)
-            # TLI added by PMB
-            ccall(:LLVMAddLowerGCFramePass, Void,
-                  (LLVM.API.LLVMPassManagerRef,), LLVM.ref(pm))
-            ccall(:LLVMAddLowerPTLSPass, Void,
-                  (LLVM.API.LLVMPassManagerRef, Cint), LLVM.ref(pm), 0)
-
-            always_inliner!(pm) # TODO: set it as the builder's inliner
-            PassManagerBuilder() do pmb
-                populate!(pm, pmb)
-            end
-        end
-
+        add_library_info!(pm, triple(mod))
+        add_transform_info!(pm, tm)
+        ccall(:jl_add_optimization_passes, Void,
+              (LLVM.API.LLVMPassManagerRef, Cint),
+               LLVM.ref(pm), optlevel[])
         run!(pm, mod)
     end
 end
@@ -198,4 +195,5 @@ Insertes IACA end marker at this position.
     end
 end
 
+include("reflection.jl")
 end # module

@@ -87,14 +87,14 @@ analyze(g, Tuple{Float64})
 ## Switching opt-level (0.7 only)
 
 ```julia
-IACA.opt_level[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL, #=default_op=# false)
+IACA.optlevel[] = 3
+analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 ````
 ## Changing the optimization pipeline
 
 ```julia
 myoptimize!(tm, mod) = ...
-analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=default_op=# false, #=optimize!=# myoptimize!)
+analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
 ````
 
 ## Notes
