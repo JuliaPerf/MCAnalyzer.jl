@@ -15,6 +15,14 @@ If `iaca` is not on your path set the environment variable `IACA_PATH=...` to po
 
 To invoke `iaca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
 
+#### Supported architectures
+- `HSW`: Haswell
+- `BDW`: Broadwell
+- `SKL`: Skylake
+- `SKX`: Skylake-X
+
+By default `analyse` will use `SKL`, but you can supply a target architecture through `analyze(func, tt, :SKX)`
+
 ### Caveats
 `iaca` 3.0 currently only supports *throughput* analysis. This means that currently it is only useful to analyse loops.
 `iaca_start()` has to be in the beginning of the loop body and `iaca_end()` has to be after the loop. `iaca` will then treat the loop as an infite loop. 
@@ -74,6 +82,20 @@ end
 
 analyze(g, Tuple{Float64})
 ```
+
+### Advanced usage
+## Switching opt-level (0.7 only)
+
+```julia
+IACA.opt_level[] = 3
+analyze(mysum, Tuple{Vector{Float64}}, :SKL, #=default_op=# false)
+````
+## Changing the optimization pipeline
+
+```julia
+myoptimize!(tm, mod) = ...
+analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=default_op=# false, #=optimize!=# myoptimize!)
+````
 
 ## Notes
 `IACA.jl` only supports version 3.0 of `iaca` at the time of this writing there has been no documentation released for version 3.0.

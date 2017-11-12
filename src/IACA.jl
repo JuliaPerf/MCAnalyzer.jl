@@ -6,31 +6,21 @@ using LLVM
 import Compat: @nospecialize
 
 const jlctx = Ref{LLVM.Context}()
+const opt_level = Ref{Int}()
 
 function __init__()
     jlctx[] = LLVM.Context(convert(LLVM.API.LLVMContextRef,
                                    cglobal(:jl_LLVMContext, Void)))
 
+    opt_level[] = Base.JLOptions().opt_level
 end
 
 """
-    write_objectfile(mod, path)
-
-Writes a LLVM module as a objectfile to the given `path`.
-"""
-function write_objectfile(mod::LLVM.Module, path::String)
-    host_triple = LLVM.triple()
-    host_t = LLVM.Target(host_triple)
-    LLVM.TargetMachine(host_t, host_triple) do tm
-        LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, path)
-    end
-end
-
-"""
-    analyze(func, tt)
+    analyze(func, tt, march = :SKL)
 
 Analyze a given function `func` with the type signature `tt`.
 The specific method needs to be annotated with the `IACA` markers.
+Supported `march` are :HSW, :BDW, :SKL, and :SKX.
 
 # Example
 
@@ -46,25 +36,84 @@ function mysum(A)
 end
 
 analyze(mysum, Tuple{Vector{Float64}})
+```
+
+# Advanced usage
+## Switching opt-level (0.7 only)
+```julia
+IACA.opt_level[] = 3
+analyze(mysum, Tuple{Vector{Float64}}, :SKL, #=default_op=# false)
+````
+
+## Changing the optimization pipeline
+
+```julia
+myoptimize!(tm, mod) = ...
+analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=default_op=# false, #=optimize!=# myoptimize!)
 ````
 """
-function analyze(@nospecialize(func), @nospecialize(tt))
+function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, default_opt = true, optimize! = jloptimize!)
     mod = parse(LLVM.Module,
                 Base._dump_function(func, tt,
                                     #=native=#false, #=wrapper=#false, #=strip=#false,
-                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#true), jlctx[])
+                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#default_opt), jlctx[])
 
     iaca_path = "iaca"
     if haskey(ENV, "IACA_PATH")
         iaca_path = ENV["IACA_PATH"]
     end
+    @assert !isempty(iaca_path)
 
-    # TODO: pickup arch host, and allow to set target specifically so that we can test other arch
-    arch = "SKL"
-    mktempdir() do dir
-        objfile = joinpath(dir, "temp.o") 
-        path = write_objectfile(mod, objfile)
-        Base.run(`$iaca_path -arch $arch $objfile`)
+    cpus = Dict(
+        :HSW => "haswell",
+        :BDW => "broadwell",
+        :SKL => "skylake",
+        :SKX => "skx",
+    )
+    @assert haskey(cpus, march) "Arch: $march not supported"
+
+    # Construct target machine
+    triple = "x86_64-unknown-linux-gnu"
+    target = LLVM.Target(triple)
+    
+    LLVM.TargetMachine(target, triple, cpus[march], #=features=#) do tm
+        !default_opt && optimize!(tm, mod, )
+        mktempdir() do dir
+            objfile = joinpath(dir, "a.out")
+            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
+            Base.run(`$iaca_path -arch $march $objfile`)
+        end
+    end
+end
+
+"""
+    jloptimize!(tm, mod)
+
+Runs the Julia optimizer pipeline.
+"""
+function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
+    ModulePassManager() do pm
+        if Base.VERSION >= v"0.7.0-DEV.1494"
+            add_library_info!(pm, triple(mod))
+            add_transform_info!(pm, tm)
+            ccall(:jl_add_optimization_passes, Void,
+                  (LLVM.API.LLVMPassManagerRef, Cint),
+                  LLVM.ref(pm), opt_level[])
+        else
+            add_transform_info!(pm, tm)
+            # TLI added by PMB
+            ccall(:LLVMAddLowerGCFramePass, Void,
+                  (LLVM.API.LLVMPassManagerRef,), LLVM.ref(pm))
+            ccall(:LLVMAddLowerPTLSPass, Void,
+                  (LLVM.API.LLVMPassManagerRef, Cint), LLVM.ref(pm), 0)
+
+            always_inliner!(pm) # TODO: set it as the builder's inliner
+            PassManagerBuilder() do pmb
+                populate!(pm, pmb)
+            end
+        end
+
+        run!(pm, mod)
     end
 end
 
