@@ -3,16 +3,14 @@ module IACA
 export iaca_start, iaca_end, analyze
 
 using LLVM
+using LLVM.Interop
+
 import Compat: @nospecialize
 
-const jlctx = Ref{LLVM.Context}()
 const optlevel = Ref{Int}()
 const backwardsCompat = Base.VERSION < v"0.7.0-DEV.1494"
 
 function __init__()
-    jlctx[] = LLVM.Context(convert(LLVM.API.LLVMContextRef,
-                                   cglobal(:jl_LLVMContext, Void)))
-
     optlevel[] = Base.JLOptions().opt_level
 end
 
@@ -99,7 +97,7 @@ function irgen(@nospecialize(func), @nospecialize(tt), optimize=backwardsCompat 
     mod = parse(LLVM.Module,
                 Base._dump_function(func, tt,
                                     #=native=#false, #=wrapper=#false, #=strip=#false,
-                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#optimize, params), jlctx[])
+                                    #=dump_module=#true, #=syntax=#:att, #=optimize=#optimize, params), JuliaContext())
 
     fn = nameof(func)
     julia_fs = Dict{String,Dict{String,LLVM.Function}}()
