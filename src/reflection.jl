@@ -56,11 +56,13 @@ function code_native(io::IO, @nospecialize(func::Core.Function), @nospecialize(t
 
     # filter the assembly file
     foundStart = false
-    start = string(LLVM.name(llvmf), ":")
+    start1 = string(LLVM.name(llvmf), ':')
+    start2 = string('"', LLVM.name(llvmf), '"', ':')
     asmbuf = IOBuffer(asm)
     for line in eachline(asmbuf)
         if !foundStart
-            foundStart = startswith(line, start)
+            foundStart = startswith(line, start1) ||
+                         startswith(line, start2)
         end
         if foundStart
             write(io, line)
@@ -69,6 +71,10 @@ function code_native(io::IO, @nospecialize(func::Core.Function), @nospecialize(t
             end
             write(io, '\n')
         end
+    end
+    if !foundStart
+    	warn("Did not find the start of the function")
+	    write(io, asm)
     end
 end
 code_native(@nospecialize(func), @nospecialize(types=Tuple); kwargs...) =
