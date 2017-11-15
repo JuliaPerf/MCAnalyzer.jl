@@ -139,44 +139,16 @@ function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
     end
 end
 
-function gen_iaca(code, name)
-    mod = LLVM.Module("IACA", jlctx[])
-    ft = LLVM.FunctionType(LLVM.VoidType(jlctx[]))
-    # ATT syntax target comes last
-    raw_asm = """
-        movl \$\$$code, %ebx
-        .byte 0x64, 0x67, 0x90
-        """
-    # defined in iacaMarks.h as volatile with a memory clobber
-    # Without the ebx clobber functions seqfault.
-    asm = InlineAsm(ft, raw_asm, #=constraints=# "~{memory},~{ebx}", #=side-effects=# true )
-    llvmf = LLVM.Function(mod, "iaca_$name", ft)
-
-    Builder(jlctx[]) do builder
-        entry = BasicBlock(llvmf, "entry", jlctx[])
-        position!(builder, entry)
-
-        # insert call to asm
-        call!(builder, asm)
-        ret!(builder)
-    end
-    push!(function_attributes(llvmf), EnumAttribute("alwaysinline"))
-
-    return llvmf
-end
-
 """
     iaca_start()
 
 Insertes IACA start marker at this position.
 """
-@generated function iaca_start()
-    llvmf = gen_iaca("111", "start")
-    quote
-        Base.@_inline_meta
-        Base.llvmcall(LLVM.ref($llvmf), Void, Tuple{})
-        return nothing
-    end
+function iaca_start()
+    @asmcall("""
+    movl \$\$111, %ebx
+    .byte 0x64, 0x67, 0x90
+    """, "~{memory},~{ebx}", true)
 end
 
 """
@@ -184,13 +156,11 @@ end
 
 Insertes IACA end marker at this position.
 """
-@generated function iaca_end()
-    llvmf = gen_iaca("222", "end")
-    quote
-        Base.@_inline_meta
-        Base.llvmcall(LLVM.ref($llvmf), Void, Tuple{})
-        return nothing
-    end
+function iaca_end()
+    @asmcall("""
+    movl \$\$222, %ebx
+    .byte 0x64, 0x67, 0x90
+    """, "~{memory},~{ebx}")
 end
 
 include("reflection.jl")
