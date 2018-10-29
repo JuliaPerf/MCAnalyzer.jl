@@ -72,6 +72,7 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::
         end
         Base.run(`$iaca_path -arch $march $objfile`)
     end
+    return nothing
 end
 
 nameof(f::Core.Function) = String(typeof(f).name.mt.name)
