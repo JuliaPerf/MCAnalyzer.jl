@@ -3,7 +3,8 @@
 
 `IACA.jl` provides a interface to the [*Intel Architecture Code Analyzer*](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer) for Julia functions.
 
-## Installation 
+## Installation
+
 First manually install **IACA** from https://software.intel.com/en-us/articles/intel-architecture-code-analyzer and then install this package.
 If `iaca` is not on your path set the environment variable `IACA_PATH=...` to point to the `iaca` binary that you downloaded from Intel.
 
@@ -14,7 +15,8 @@ If `iaca` is not on your path set the environment variable `IACA_PATH=...` to po
 
 To invoke `iaca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
 
-#### Supported architectures
+### Supported architectures
+
 - `HSW`: Haswell
 - `BDW`: Broadwell
 - `SKL`: Skylake
@@ -23,8 +25,12 @@ To invoke `iaca` on a specific method that has been annotated use `analyze(func,
 By default `analyse` will use `SKL`, but you can supply a target architecture through `analyze(func, tt, :SKX)`
 
 ### Caveats
+
 `iaca` 3.0 currently only supports *throughput* analysis. This means that currently it is only useful to analyse loops.
-`iaca_start()` has to be in the beginning of the loop body and `iaca_end()` has to be after the loop. `iaca` will then treat the loop as an infite loop. 
+`iaca_start()` has to be in the beginning of the loop body and `iaca_end()` has to be after the loop. `iaca` will then treat the loop as an infite loop.
+
+It is recommended to use `@code_llvm`/`@code_native` to inspect the IR/assembly and check that the annotations are
+in the expected place.
 
 ### Examples
 
@@ -33,9 +39,9 @@ using IACA
 
 function mysum(A)
     acc = zero(eltype(A))
-    for a in A
+    for i in eachindex(A)
         iaca_start()
-        acc += a
+        @inbounds acc += A[i]
     end
     iaca_end()
     return acc
@@ -83,12 +89,14 @@ analyze(g, Tuple{Float64})
 ```
 
 ### Advanced usage
-#### Switching opt-level (0.7 only)
+
+#### Switching opt-level
 
 ```julia
 IACA.optlevel[] = 3
 analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 ````
+
 #### Changing the optimization pipeline
 
 ```julia
@@ -97,6 +105,7 @@ analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
 ````
 
 ## Notes
+
 `IACA.jl` only supports version 3.0 of `iaca` at the time of this writing there has been no documentation released for version 3.0.
 
 - Version 3.0 only support [`Throughput Analysis`](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer#Throughput Analysis)
@@ -104,5 +113,6 @@ analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
 - http://www.agner.org/optimize/
 
 ## Acknowledgment
+
 - @maleadt for [LLVM.jl](https://github.com/maleadt/LLVM.jl)
 - @carnaval for the original [IACA.jl](https://github.com/carnaval/IACA.jl)

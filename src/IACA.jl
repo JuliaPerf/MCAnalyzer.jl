@@ -44,9 +44,9 @@ Supported `march` are :HSW, :BDW, :SKL, and :SKX.
 ```julia
 function mysum(A)
     acc = zero(eltype(A))
-    iaca_start()
-    for a in A
-        acc += a
+    for i in eachindex(A)
+        iaca_start()
+        @inbounds acc += A[i]
     end
     iaca_end()
     return acc
@@ -68,6 +68,10 @@ analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 myoptimize!(tm, mod) = ...
 analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
 ````
+
+## Changing the analyzer tool
+IACA.analyzer[] = IACA.llvm_mca
+analyze(mysum, Tuple{Vector{Float64}})
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
     mktempdir() do dir
