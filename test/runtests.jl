@@ -16,9 +16,9 @@ asm = String(take!(buf))
 
 function mysum(A)
     acc = zero(eltype(A))
-    iaca_start()
-    for a in A
-        acc += a
+    for a in eachindex(A)
+        iaca_start()
+        @inbounds acc += A[i]
     end
     iaca_end()
     return acc
