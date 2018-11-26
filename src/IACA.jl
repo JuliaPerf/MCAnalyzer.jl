@@ -5,10 +5,31 @@ using LLVM
 using LLVM.Interop
 
 const optlevel = Ref{Int}()
+const analyzer = Ref{Any}()
 
 function __init__()
     @assert LLVM.InitializeNativeTarget() == false
     optlevel[] = Base.JLOptions().opt_level
+    analyzer[] = iaca
+end
+
+function iaca(march, objfile, asmfile)
+    iaca_path = "iaca"
+    if haskey(ENV, "IACA_PATH")
+        iaca_path = ENV["IACA_PATH"]
+    end
+    @assert !isempty(iaca_path)
+    Base.run(`$iaca_path -arch $march $objfile`)
+end
+
+function llvm_mca(march, objfile, asmfile)
+    llvm_mca = "llvm-mca"
+    if haskey(ENV, "LLVM_MCA_PATH")
+        llvm_mca = ENV["LLVM_MCA_PATH"]
+    end
+    @assert !isempty(llvm_mca)
+    march = llvm_march(march)
+    Base.run(`$llvm_mca -mcpu $march $asmfile`)
 end
 
 """
@@ -23,8 +44,8 @@ Supported `march` are :HSW, :BDW, :SKL, and :SKX.
 ```julia
 function mysum(A)
     acc = zero(eltype(A))
+    iaca_start()
     for a in A
-        iaca_start()
         acc += a
     end
     iaca_end()
@@ -45,16 +66,24 @@ analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 
 ```julia
 myoptimize!(tm, mod) = ...
-analyze(mysum. Tuple{Vector{Float64}}, :SKL, myoptimize!)
+analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
 ````
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
-    iaca_path = "iaca"
-    if haskey(ENV, "IACA_PATH")
-        iaca_path = ENV["IACA_PATH"]
+    mktempdir() do dir
+        objfile = joinpath(dir, "a.out")
+        asmfile = joinpath(dir, "a.S")
+        mod, _ = irgen(func, tt)
+        target_machine(llvm_march(march)) do tm
+            optimize!(tm, mod)
+            LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile, asmfile)
+            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
+        end
+        Base.invokelatest(analyzer[], march, objfile, asmfile)
     end
-    @assert !isempty(iaca_path)
+end
 
+function llvm_march(march)
     cpus = Dict(
         :HSW => "haswell",
         :BDW => "broadwell",
@@ -62,16 +91,7 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::
         :SKX => "skx",
     )
     @assert haskey(cpus, march) "Arch: $march not supported"
-
-    mktempdir() do dir
-        objfile = joinpath(dir, "a.out")
-        mod, _ = irgen(func, tt)
-        target_machine(cpus[march]) do tm
-            optimize!(tm, mod)
-            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
-        end
-        Base.run(`$iaca_path -arch $march $objfile`)
-    end
+    return cpus[march]
 end
 
 nameof(f::Core.Function) = String(typeof(f).name.mt.name)
@@ -143,7 +163,7 @@ function irgen(@nospecialize(func), @nospecialize(tt))
     # FIXME: Julia's globalUnique starting with `-` is probably a bug.
     entry_tag = let
         m = match(r"^jfptr_(.+)_[-\d]+$", LLVM.name(wrapper))
-        if m == nothing 
+        if m == nothing
             error(LLVM.name(wrapper))
         end
         m.captures[1]
@@ -160,7 +180,7 @@ function irgen(@nospecialize(func), @nospecialize(tt))
                 end
             end
         end
-        if length(entrypoints) != 1 
+        if length(entrypoints) != 1
             @warn ":cry:" functions=Tuple(LLVM.name.(definitions)) tag=entry_tag entrypoints=Tuple(LLVM.name.(entrypoints))
         end
         entrypoints[1]
@@ -208,6 +228,7 @@ function iaca_start()
     @asmcall("""
     movl \$\$111, %ebx
     .byte 0x64, 0x67, 0x90
+    # LLVM-MCA-BEGIN
     """, "~{memory},~{ebx}", true)
 end
 
@@ -218,6 +239,7 @@ Insertes IACA end marker at this position.
 """
 function iaca_end()
     @asmcall("""
+    # LLVM-MCA-END
     movl \$\$222, %ebx
     .byte 0x64, 0x67, 0x90
     """, "~{memory},~{ebx}", true)

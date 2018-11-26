@@ -16,8 +16,8 @@ asm = String(take!(buf))
 
 function mysum(A)
     acc = zero(eltype(A))
+    iaca_start()
     for a in A
-        iaca_start()
         acc += a
     end
     iaca_end()
