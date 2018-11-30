@@ -6,7 +6,6 @@
 ## Installation 
 First manually install **IACA** from https://software.intel.com/en-us/articles/intel-architecture-code-analyzer and then install this package.
 If `iaca` is not on your path set the environment variable `IACA_PATH=...` to point to the `iaca` binary that you downloaded from Intel.
-`IACA.jl` depends on `LLVM.jl`, which in turns requires a **source** build of Julia (see https://maleadt.github.io/LLVM.jl/stable/)
 
 ## Usage
 
