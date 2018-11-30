@@ -1,5 +1,5 @@
-module IACA
-export iaca_start, iaca_end, analyze
+module MCAnalyzer
+export mark_start, mark_end, analyze
 
 using LLVM
 using LLVM.Interop
@@ -28,8 +28,7 @@ function llvm_mca(march, objfile, asmfile)
         llvm_mca = ENV["LLVM_MCA_PATH"]
     end
     @assert !isempty(llvm_mca)
-    march = llvm_march(march)
-    Base.run(`$llvm_mca -mcpu $march $asmfile`)
+    Base.run(`$llvm_mca -mcpu $(llvm_march(march)) $asmfile`)
 end
 
 """
@@ -45,10 +44,10 @@ Supported `march` are :HSW, :BDW, :SKL, and :SKX.
 function mysum(A)
     acc = zero(eltype(A))
     for i in eachindex(A)
-        iaca_start()
+        mark_start()
         @inbounds acc += A[i]
     end
-    iaca_end()
+    mark_end()
     return acc
 end
 
@@ -58,7 +57,7 @@ analyze(mysum, Tuple{Vector{Float64}})
 # Advanced usage
 ## Switching opt-level
 ```julia
-IACA.optlevel[] = 3
+MCAnalyzer.optlevel[] = 3
 analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 ````
 
@@ -70,7 +69,7 @@ analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
 ````
 
 ## Changing the analyzer tool
-IACA.analyzer[] = IACA.llvm_mca
+MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
 analyze(mysum, Tuple{Vector{Float64}})
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
@@ -128,7 +127,7 @@ function irgen(@nospecialize(func), @nospecialize(tt))
     end
 
     params = Base.CodegenParams(cached=false,
-                                module_activation  = hook_module_activation,
+                                module_activation = hook_module_activation,
                                 )
 
     # get the code
@@ -225,11 +224,11 @@ function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
 end
 
 """
-    iaca_start()
+    mark_start()
 
-Insertes IACA start marker at this position.
+Insert `iaca` and `llvm-mca` start markers at this position.
 """
-function iaca_start()
+function mark_start()
     @asmcall("""
     movl \$\$111, %ebx
     .byte 0x64, 0x67, 0x90
@@ -238,11 +237,11 @@ function iaca_start()
 end
 
 """
-    iaca_end()
+    mark_end()
 
-Insertes IACA end marker at this position.
+Insert `iaca` and `llvm-mca` end markers at this position.
 """
-function iaca_end()
+function mark_end()
     @asmcall("""
     # LLVM-MCA-END
     movl \$\$222, %ebx

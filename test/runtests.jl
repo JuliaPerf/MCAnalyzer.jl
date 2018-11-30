@@ -1,9 +1,9 @@
-using IACA
+using MCAnalyzer
 using Test
 using InteractiveUtils
 
-f() = iaca_start()
-g() = iaca_end()
+f() = mark_start()
+g() = mark_end()
 
 buf = IOBuffer()
 code_native(buf, f, Tuple{})
@@ -16,11 +16,11 @@ asm = String(take!(buf))
 
 function mysum(A)
     acc = zero(eltype(A))
-    for a in eachindex(A)
-        iaca_start()
+    for i in eachindex(A)
+        mark_start()
         @inbounds acc += A[i]
     end
-    iaca_end()
+    mark_end()
     return acc
 end
 code_native(buf, mysum, Tuple{Vector{Float64}})
