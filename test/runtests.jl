@@ -29,3 +29,17 @@ asm = String(take!(buf))
 @test occursin("movl\t\$222, %ebx", asm)
 
 @test_nowarn analyze(mysum, Tuple{Vector{Float64}})
+
+using LinearAlgebra
+
+function mynorm(out, X)
+    for i in 1:length(X)
+        @inbounds out[i] = X[i] / norm(X)
+    end
+    out
+end
+
+fname, io = mktemp()
+@test_nowarn MCAnalyzer.code_llvm(io, mynorm, Tuple{Vector{Float64}, Vector{Float64}})
+close(io)
+rm(fname)

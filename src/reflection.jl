@@ -17,8 +17,6 @@ function code_llvm(io::IO, @nospecialize(func::Core.Function), @nospecialize(typ
                cpu::String = "skylake", optimize!::Core.Function = jloptimize!,
                optimize::Bool = true, dump_module::Bool = false)
 
-    backwardsCompat && error("On 0.6 use Base.code_llvm")
-
     tt = Base.to_tuple_type(types)
     mod, llvmf = irgen(func, tt)
     if optimize
@@ -32,18 +30,16 @@ function code_llvm(io::IO, @nospecialize(func::Core.Function), @nospecialize(typ
         show(io, llvmf)
     end
 end
-code_llvm(@nospecialize(func), @nospecialize(types=Tuple); kwargs...) = code_llvm(STDOUT, func, types; kwargs...)
+code_llvm(@nospecialize(func), @nospecialize(types=Tuple); kwargs...) = code_llvm(stdout, func, types; kwargs...)
 
 """
     code_native([io], f, types; cpu = "skylake", optimize! = jloptimize!, dump_module = false, verbose = false)
 
-Emits assembly for the given `cpu` and `optimize!` pass pipline. 
+Emits assembly for the given `cpu` and `optimize!` pass pipline.
 """
 function code_native(io::IO, @nospecialize(func::Core.Function), @nospecialize(types=Tuple);
                      cpu::String = "skylake", optimize!::Core.Function = jloptimize!,
                      dump_module::Bool = false, verbose::Bool = false)
-
-    backwardsCompat && error("On 0.6 use Base.code_native")
 
     tt = Base.to_tuple_type(types)
     mod, llvmf = irgen(func, tt)
