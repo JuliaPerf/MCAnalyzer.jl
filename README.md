@@ -1,7 +1,7 @@
 # MCAnalyzer
 [![Build Status](https://travis-ci.org/vchuravy/MCAnalyzer.jl.svg?branch=master)](https://travis-ci.org/vchuravy/MCAnalyzer.jl)
 
-`MCAnalyzer.jl` provides a interface to the [*Intel Architecture Code Analyzer*](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer) for Julia functions.
+`MCAnalyzer.jl` provides a interface to the [*Intel Architecture Code Analyzer*](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer) and [*LLVM MCA*](https://www.llvm.org/docs/CommandGuide/llvm-mca.html) for Julia functions.
 
 ## Installation
 
@@ -103,6 +103,12 @@ analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 myoptimize!(tm, mod) = ...
 analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
 ````
+#### Changing the analyzer tool
+
+```julia
+MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
+analyze(mysum, Tuple{Vector{Float64}})
+```
 
 ## Notes
 
