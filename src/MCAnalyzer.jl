@@ -58,21 +58,25 @@ analyze(mysum, Tuple{Vector{Float64}})
 
 # Advanced usage
 ## Switching opt-level
+
 ```julia
 MCAnalyzer.optlevel[] = 3
 analyze(mysum, Tuple{Vector{Float64}}, :SKL)
-````
+```
 
 ## Changing the optimization pipeline
 
 ```julia
 myoptimize!(tm, mod) = ...
 analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
-````
+```
 
 ## Changing the analyzer tool
+
+```julia
 MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
 analyze(mysum, Tuple{Vector{Float64}})
+```
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
     mktempdir() do dir
