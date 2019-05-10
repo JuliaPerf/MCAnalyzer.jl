@@ -1,10 +1,14 @@
 const globalUnique = Ref{Int64}(0)
 
-function genMod(@nospecialize(func), @nospecialize(tt))
+function lookup_sig(@nospecialize(func), @nospecialize(tt))
     isa(func, Core.Builtin) && error("function is not a generic function")
+    return Base.signature_type(func, tt)::Type
+end
+
+function genMod(@nospecialize(sig))
     world = typemax(UInt)
-    meth = which(func, tt)
-    sig = Base.signature_type(func, tt)::Type
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), sig, world)
+    meth = m.func::Method
 
     (ti, env) = ccall(:jl_type_intersection_with_env, Any,
                       (Any, Any), sig, meth.sig)::Core.SimpleVector
@@ -42,7 +46,12 @@ function genMod(@nospecialize(func), @nospecialize(tt))
 end
 
 function irgen(@nospecialize(func), @nospecialize(tt))
-    mod, dependencies = genMod(func, tt)
+    sig = lookup_sig(func, tt)
+    irgen(sig)
+end
+
+function irgen(@nospecialize(sig))
+    mod, dependencies = genMod(sig)
 
     # the main module should contain a single jfptr_ function definition,
     # e.g. jfptr_kernel_vadd_62977
