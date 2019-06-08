@@ -112,7 +112,7 @@ analyze(mysum, Tuple{Vector{Float64}})
 
 ## Notes
 
-`MCAnalyzer.jl` only supports version 3.0 of `iaca` at the time of this writing there has been no documentation released for version 3.0.
+`MCAnalyzer.jl` only supports version 3.0 of `iaca`. The [online documentation for version 3.0](https://software.intel.com/sites/default/files/managed/3d/23/intel-architecture-code-analyzer-3.0-users-guide.pdf) is easily available, and contains a few more detailed explanations that this README.
 
 - Version 3.0 only support [`Throughput Analysis`](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer#Throughput Analysis)
 - The user guide for version 2.0 is available at https://progforperf.github.io/MCAnalyzer-Guide.pdf
