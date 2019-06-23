@@ -1,4 +1,4 @@
-const globalUnique = Ref{Int64}(0)
+globalUnique = 0
 using DataStructures
 
 function compile_method_instance(method_instance::Core.MethodInstance, world)
