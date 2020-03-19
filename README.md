@@ -1,19 +1,14 @@
 # MCAnalyzer
 [![Build Status](https://travis-ci.org/vchuravy/MCAnalyzer.jl.svg?branch=master)](https://travis-ci.org/vchuravy/MCAnalyzer.jl)
 
-`MCAnalyzer.jl` provides a interface to the [*Intel Architecture Code Analyzer*](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer) and [*LLVM MCA*](https://www.llvm.org/docs/CommandGuide/llvm-mca.html) for Julia functions.
-
-## Installation
-
-First manually install `iaca` from https://software.intel.com/en-us/articles/intel-architecture-code-analyzer and then install this package.
-If `iaca` is not on your path set the environment variable `IACA_PATH=...` to point to the `iaca` binary that you downloaded from Intel.
+`MCAnalyzer.jl` provides a interface to the [*LLVM MCA*](https://www.llvm.org/docs/CommandGuide/llvm-mca.html) for Julia functions.
 
 ## Usage
 
 `MCAnalyzer.jl` provides the two functions `mark_start` and `mark_end`  both will insert some special markers into you code.
-`iaca` will then analyse the generated object file and only analyse the parts in between the two markers.
+`llvm-mca` will then analyse the generated assembly and only analyse the parts in between the two markers.
 
-To invoke `iaca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
+To invoke `llvm-mca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
 
 ### Supported architectures
 
@@ -22,7 +17,7 @@ To invoke `iaca` on a specific method that has been annotated use `analyze(func,
 - `SKL`: Skylake
 - `SKX`: Skylake-X
 
-By default `analyse` will use `SKL`, but you can supply a target architecture through `analyze(func, tt, :SKX)`
+By default `analyse` will use `SKL`, but you can supply a target architecture through `analyze(func, tt, march=:SKX)`
 
 ### Caveats
 
@@ -93,8 +88,7 @@ analyze(g, Tuple{Float64})
 #### Switching opt-level
 
 ```julia
-MCAnalyzer.optlevel[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL)
+analyze(mysum, Tuple{Vector{Float64}}, march=:SKL, opt_level=3)
 ````
 
 #### Changing the optimization pipeline
@@ -103,20 +97,6 @@ analyze(mysum, Tuple{Vector{Float64}}, :SKL)
 myoptimize!(tm, mod) = ...
 analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
 ````
-#### Changing the analyzer tool
-
-```julia
-MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
-analyze(mysum, Tuple{Vector{Float64}})
-```
-
-## Notes
-
-`MCAnalyzer.jl` only supports version 3.0 of `iaca`. The [online documentation for version 3.0](https://software.intel.com/sites/default/files/managed/3d/23/intel-architecture-code-analyzer-3.0-users-guide.pdf) is easily available, and contains a more detailed explanation and a few more examples.
-
-- Version 3.0 only support [`Throughput Analysis`](https://software.intel.com/en-us/articles/intel-architecture-code-analyzer#Throughput Analysis)
-- The user guide for version 2.0 is available at https://progforperf.github.io/MCAnalyzer-Guide.pdf
-- http://www.agner.org/optimize/
 
 ## Acknowledgment
 

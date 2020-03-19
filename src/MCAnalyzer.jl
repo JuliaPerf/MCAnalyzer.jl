@@ -4,31 +4,19 @@ export mark_start, mark_end, analyze
 using LLVM
 using LLVM.Interop
 
-const optlevel = Ref{Int}()
-const analyzer = Ref{Any}()
+# import LLVM_jll: llvm_mca
+function llvm_mca(f)
+    if Sys.iswindows()
+        SUFFIX=".exe"
+    else
+        SUFFIX=""
+    end
+    llvm_mca_path = joinpath(Sys.BINDIR, "..", "tools", "llvm-mca$(SUFFIX)")
+    f(llvm_mca_path)
+end
 
 function __init__()
     @assert LLVM.InitializeNativeTarget() == false
-    optlevel[] = Base.JLOptions().opt_level
-    analyzer[] = iaca
-end
-
-function iaca(march, objfile, asmfile)
-    iaca_path = "iaca"
-    if haskey(ENV, "IACA_PATH")
-        iaca_path = ENV["IACA_PATH"]
-    end
-    @assert !isempty(iaca_path)
-    Base.run(`$iaca_path -arch $march $objfile`)
-end
-
-function llvm_mca(march, objfile, asmfile)
-    llvm_mca = "llvm-mca"
-    if haskey(ENV, "LLVM_MCA_PATH")
-        llvm_mca = ENV["LLVM_MCA_PATH"]
-    end
-    @assert !isempty(llvm_mca)
-    Base.run(`$llvm_mca -mcpu $(llvm_march(march)) $asmfile`)
 end
 
 include("irgen.jl")
@@ -60,35 +48,31 @@ analyze(mysum, Tuple{Vector{Float64}})
 ## Switching opt-level
 
 ```julia
-MCAnalyzer.optlevel[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL)
+analyze(mysum, Tuple{Vector{Float64}}, march = :SKL, opt_level=3)
 ```
 
 ## Changing the optimization pipeline
 
 ```julia
 myoptimize!(tm, mod) = ...
-analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
+analyze(mysum, Tuple{Vector{Float64}}, myoptimize!)
 ```
 
-## Changing the analyzer tool
-
-```julia
-MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
-analyze(mysum, Tuple{Vector{Float64}})
-```
 """
-function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
+function analyze(@nospecialize(func), @nospecialize(tt), optimize!::Core.Function = jloptimize!;
+                 march=:SKL, optlevel=Base.JLOptions().opt_level)
     mktempdir() do dir
         objfile = joinpath(dir, "a.out")
         asmfile = joinpath(dir, "a.S")
         mod, _ = irgen(func, tt)
         target_machine(llvm_march(march)) do tm
-            optimize!(tm, mod)
+            optimize!(tm, mod, optlevel)
             LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile, asmfile)
-            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
         end
-        Base.invokelatest(analyzer[], march, objfile, asmfile)
+
+        llvm_mca() do llvm_mca_path
+            Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) $asmfile`)
+        end
     end
     return nothing
 end
@@ -113,17 +97,17 @@ function target_machine(lambda, cpu, features = "")
 end
 
 """
-    jloptimize!(tm, mod)
+    jloptimize!(tm, mod, optlevel)
 
 Runs the Julia optimizer pipeline.
 """
-function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
+function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module, optlevel)
     ModulePassManager() do pm
         add_library_info!(pm, triple(mod))
         add_transform_info!(pm, tm)
         ccall(:jl_add_optimization_passes, Nothing,
               (LLVM.API.LLVMPassManagerRef, Cint),
-               LLVM.ref(pm), optlevel[])
+               LLVM.ref(pm), optlevel)
         run!(pm, mod)
     end
 end
