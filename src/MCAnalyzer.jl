@@ -15,11 +15,56 @@ function llvm_mca(f)
     f(llvm_mca_path)
 end
 
-function __init__()
-    @assert LLVM.InitializeNativeTarget() == false
+using  GPUCompiler
+import GPUCompiler: NativeCompilerTarget, FunctionSpec
+
+function llvm_march(march)
+    cpus = Dict(
+        :HSW => "haswell",
+        :BDW => "broadwell",
+        :SKL => "skylake",
+        :SKX => "skx",
+    )
+    @assert haskey(cpus, march) "Arch: $march not supported"
+    return cpus[march]
 end
 
-include("irgen.jl")
+Base.@kwdef struct MCACompilerJob <: AbstractCompilerJob
+    target::NativeCompilerTarget
+    source::FunctionSpec
+    optlevel::Int=Base.JLOptions().opt_level
+end
+
+import GPUCompiler: target, source, runtime_slug
+target(job::MCACompilerJob) = job.target
+source(job::MCACompilerJob) = job.source
+
+Base.similar(job::MCACompilerJob, source::FunctionSpec) =
+    MCACompilerJob(target=job.target, source=source)
+
+function Base.show(io::IO, job::MCACompilerJob)
+    print(io, "Native CompilerJob of ", source(job))
+    print(io, " for $(target(job).cpu) $(target(job).features)")
+end
+
+# TODO: encode debug build or not in the compiler job
+#       https://github.com/JuliaGPU/CUDAnative.jl/issues/368
+runtime_slug(job::MCACompilerJob) = "native_$(target(job).cpu)$(target(job).features)"
+
+function GPUCompiler.optimize!(job::MCACompilerJob, mod::LLVM.Module, entry::LLVM.Function)
+    tm = GPUCompiler.llvm_machine(target(job))
+
+    ModulePassManager() do pm
+        add_library_info!(pm, triple(mod))
+        add_transform_info!(pm, tm)
+        ccall(:jl_add_optimization_passes, Nothing,
+              (LLVM.API.LLVMPassManagerRef, Cint),
+               LLVM.ref(pm), job.optlevel)
+        run!(pm, mod)
+    end
+
+    return entry
+end
 
 """
     analyze(func, tt, march = :SKL)
@@ -59,57 +104,25 @@ analyze(mysum, Tuple{Vector{Float64}}, myoptimize!)
 ```
 
 """
-function analyze(@nospecialize(func), @nospecialize(tt), optimize!::Core.Function = jloptimize!;
+function analyze(@nospecialize(func), @nospecialize(tt);
                  march=:SKL, optlevel=Base.JLOptions().opt_level)
     mktempdir() do dir
         objfile = joinpath(dir, "a.out")
         asmfile = joinpath(dir, "a.S")
-        mod, _ = irgen(func, tt)
-        target_machine(llvm_march(march)) do tm
-            optimize!(tm, mod, optlevel)
-            LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile, asmfile)
-        end
 
+        source = FunctionSpec(func, Base.to_tuple_type(tt), false)
+        target = NativeCompilerTarget(cpu=llvm_march(march))
+        job = MCACompilerJob(target, source, optlevel)
+
+        open(asmfile, "w") do io
+            GPUCompiler.code_native(io, job, raw=true)
+        end
+        
         llvm_mca() do llvm_mca_path
             Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) $asmfile`)
         end
     end
     return nothing
-end
-
-function llvm_march(march)
-    cpus = Dict(
-        :HSW => "haswell",
-        :BDW => "broadwell",
-        :SKL => "skylake",
-        :SKX => "skx",
-    )
-    @assert haskey(cpus, march) "Arch: $march not supported"
-    return cpus[march]
-end
-
-nameof(f::Core.Function) = String(typeof(f).name.mt.name)
-
-function target_machine(lambda, cpu, features = "")
-    triple = LLVM.triple()
-    target = LLVM.Target(triple)
-    LLVM.TargetMachine(lambda, target, triple, cpu, features)
-end
-
-"""
-    jloptimize!(tm, mod, optlevel)
-
-Runs the Julia optimizer pipeline.
-"""
-function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module, optlevel)
-    ModulePassManager() do pm
-        add_library_info!(pm, triple(mod))
-        add_transform_info!(pm, tm)
-        ccall(:jl_add_optimization_passes, Nothing,
-              (LLVM.API.LLVMPassManagerRef, Cint),
-               LLVM.ref(pm), optlevel)
-        run!(pm, mod)
-    end
 end
 
 """
