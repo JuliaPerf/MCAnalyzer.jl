@@ -1,17 +1,49 @@
 module MCAnalyzer
 export mark_start, mark_end, analyze
 
-using LLVM
-using LLVM.Interop
+import LLVM
+import LLVM.Interop: @asmcall
 
-const optlevel = Ref{Int}()
+using GPUCompiler
+
 const analyzer = Ref{Any}()
 
 function __init__()
     @assert LLVM.InitializeNativeTarget() == false
-    optlevel[] = Base.JLOptions().opt_level
     analyzer[] = iaca
 end
+
+#=========================================================#
+# GPUCompiler
+#=========================================================#
+
+module MockRuntime
+    signal_exception() = return
+    malloc(sz) = C_NULL
+    report_oom(sz) = return
+    report_exception(ex) = return
+    report_exception_name(ex) = return
+    report_exception_frame(idx, func, file, line) = return
+end
+
+struct CompilerParams <: AbstractCompilerParams end
+GPUCompiler.runtime_module(::CompilerJob{<:Any,CompilerParams}) = MockRuntime
+
+function mcjob(@nospecialize(func), @nospecialize(types);
+               cpu::String = (LLVM.version() < v"8") ? "" : unsafe_string(LLVM.API.LLVMGetHostCPUName()),
+               features::String=(LLVM.version() < v"8") ? "" : unsafe_string(LLVM.API.LLVMGetHostCPUFeatures()),
+               kwargs...)
+    source = FunctionSpec(func, Base.to_tuple_type(types), #=kernel=# false)
+    target = NativeCompilerTarget(cpu=cpu, features=features)
+    params = CompilerParams()
+    CompilerJob(target, source, params), kwargs
+end
+
+include("reflection.jl")
+
+#=========================================================#
+# IACA
+#=========================================================#
 
 function iaca(march, objfile, asmfile)
     iaca_path = "iaca"
@@ -22,6 +54,10 @@ function iaca(march, objfile, asmfile)
     Base.run(`$iaca_path -arch $march $objfile`)
 end
 
+#=========================================================#
+# LLVM-MCA
+#=========================================================#
+
 function llvm_mca(march, objfile, asmfile)
     llvm_mca = "llvm-mca"
     if haskey(ENV, "LLVM_MCA_PATH")
@@ -31,12 +67,10 @@ function llvm_mca(march, objfile, asmfile)
     Base.run(`$llvm_mca -mcpu $(llvm_march(march)) $asmfile`)
 end
 
-include("irgen.jl")
-
 """
-    analyze(func, tt, march = :SKL)
+    analyze(func, types, march = :SKL)
 
-Analyze a given function `func` with the type signature `tt`.
+Analyze a given function `func` with the signature `types`.
 The specific method needs to be annotated with the `IACA` markers.
 Supported `march` are :HSW, :BDW, :SKL, and :SKX.
 
@@ -53,41 +87,31 @@ function mysum(A)
     return acc
 end
 
-analyze(mysum, Tuple{Vector{Float64}})
+analyze(mysum, (Vector{Float64},))
 ```
 
-# Advanced usage
-## Switching opt-level
-
-```julia
-MCAnalyzer.optlevel[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL)
-```
-
-## Changing the optimization pipeline
-
-```julia
-myoptimize!(tm, mod) = ...
-analyze(mysum, Tuple{Vector{Float64}}, :SKL, myoptimize!)
-```
-
-## Changing the analyzer tool
+# Changing the analyzer tool
 
 ```julia
 MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
-analyze(mysum, Tuple{Vector{Float64}})
+analyze(mysum, (Vector{Float64},))
 ```
 """
-function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL, optimize!::Core.Function = jloptimize!)
+function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
+    job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
+    ir, func = GPUCompiler.compile(:llvm, job; kwargs...)
+
+    GPUCompiler.finish_module!(job, ir)
+
     mktempdir() do dir
         objfile = joinpath(dir, "a.out")
         asmfile = joinpath(dir, "a.S")
-        mod, _ = irgen(func, tt)
-        target_machine(llvm_march(march)) do tm
-            optimize!(tm, mod)
-            LLVM.emit(tm, mod, LLVM.API.LLVMAssemblyFile, asmfile)
-            LLVM.emit(tm, mod, LLVM.API.LLVMObjectFile, objfile)
-        end
+
+        tm = GPUCompiler.llvm_machine(job.target)
+        LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
+        LLVM.emit(tm, ir, LLVM.API.LLVMObjectFile, objfile)
+
+        # Now call analyzer
         Base.invokelatest(analyzer[], march, objfile, asmfile)
     end
     return nothing
@@ -104,29 +128,9 @@ function llvm_march(march)
     return cpus[march]
 end
 
-nameof(f::Core.Function) = String(typeof(f).name.mt.name)
-
-function target_machine(lambda, cpu, features = "")
-    triple = LLVM.triple()
-    target = LLVM.Target(triple)
-    LLVM.TargetMachine(lambda, target, triple, cpu, features)
-end
-
-"""
-    jloptimize!(tm, mod)
-
-Runs the Julia optimizer pipeline.
-"""
-function jloptimize!(tm::LLVM.TargetMachine, mod::LLVM.Module)
-    ModulePassManager() do pm
-        add_library_info!(pm, triple(mod))
-        add_transform_info!(pm, tm)
-        ccall(:jl_add_optimization_passes, Nothing,
-              (LLVM.API.LLVMPassManagerRef, Cint),
-               LLVM.ref(pm), optlevel[])
-        run!(pm, mod)
-    end
-end
+#=========================================================#
+# Markers 
+#=========================================================#
 
 """
     mark_start()
@@ -154,5 +158,4 @@ function mark_end()
     """, "~{memory},~{ebx}", true)
 end
 
-include("reflection.jl")
 end # module
