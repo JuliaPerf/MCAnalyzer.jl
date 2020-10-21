@@ -13,7 +13,7 @@ If `iaca` is not on your path set the environment variable `IACA_PATH=...` to po
 `MCAnalyzer.jl` provides the two functions `mark_start` and `mark_end`  both will insert some special markers into you code.
 `iaca` will then analyse the generated object file and only analyse the parts in between the two markers.
 
-To invoke `iaca` on a specific method that has been annotated use `analyze(func, tt)` where `tt` is a tuple of types that gives the type signature of the method.
+To invoke `iaca` on a specific method that has been annotated use `analyze(func, types)` where `types` is a tuple of types that gives the type signature of the method.
 
 ### Supported architectures
 
@@ -47,7 +47,7 @@ function mysum(A)
     return acc
 end
 
-analyze(mysum, Tuple{Vector{Float64}})
+analyze(mysum, (Vector{Float64},))
 ```
 
 ```julia
@@ -63,7 +63,7 @@ function f(y::Float64)
     x
 end
 
-analyze(f, Tuple{Float64})
+analyze(f, (Float64,))
 ```
 
 ```julia
@@ -88,21 +88,6 @@ end
 analyze(g, Tuple{Float64})
 ```
 
-### Advanced usage
-
-#### Switching opt-level
-
-```julia
-MCAnalyzer.optlevel[] = 3
-analyze(mysum, Tuple{Vector{Float64}}, :SKL)
-````
-
-#### Changing the optimization pipeline
-
-```julia
-myoptimize!(tm, mod) = ...
-analyze(mysum. Tuple{Vector{Float64}}, :SKL, #=optimize!=# myoptimize!)
-````
 #### Changing the analyzer tool
 
 ```julia
