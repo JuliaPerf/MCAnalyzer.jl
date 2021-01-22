@@ -24,62 +24,68 @@ set -x JL $JULIA_PATH/bin/julia$SUFFIX
 set -x OPT $LLVM_PATH/opt
 set -x OPTFLAGS -load=$JULIA_PATH/lib/libjulia$SUFFIX.so
 
+# This list of pass should reflect `addOptimizationPasses`:
+# https://github.com/JuliaLang/julia/blob/ae53238c45a0cd6dafc6e121f4daaa93143bf627/src/aotcompile.cpp#L621-L806
 set -x JLPASSES \
-    -tbaa \
     -PropagateJuliaAddrspaces \
+    -scoped-noalias \
+    -tbaa \
+    -basic-aa \
     -simplifycfg \
     -dce \
     -sroa \
-    -memcpyopt \
     -always-inline \
     -AllocOpt \
     -instcombine \
     -simplifycfg \
     -sroa \
-    -instcombine \
+    -instsimplify \
     -jump-threading \
-    -instcombine \
     -reassociate \
     -early-cse \
     -AllocOpt \
     -loop-idiom \
-    -loop-rotate \
     -LowerSIMDLoop \
     -licm \
+    -JuliaLICM \
     -loop-unswitch \
-    -instcombine \
+    -licm \
+    -JuliaLICM \
+    -instsimplify \
     -indvars \
     -loop-deletion \
     -loop-unroll \
     -AllocOpt \
     -sroa \
-    -instcombine \
+    -instsimplify \
     -gvn \
     -memcpyopt \
     -sccp \
-    -sink \
-    -instsimplify \
     -instcombine \
     -jump-threading \
     -dse \
     -AllocOpt \
     -simplifycfg \
-    -loop-idiom \
     -loop-deletion \
-    -jump-threading \
-    -slp-vectorizer \
-    -adce \
     -instcombine \
     -loop-vectorize \
-    -instcombine \
+    -loop-load-elim \
+    -simplifycfg \
+    -slp-vectorizer \
+    -adce \
     -barrier \
     -LowerExcHandlers \
     -GCInvariantVerifier \
     -LateLowerGCFrame \
+    -FinalLowerGC \
+    -gvn \
+    -scpp \
     -dce \
     -LowerPTLS \
+    -instcombine \
     -simplifycfg \
-    -CombineMulAdd
+    -CombineMulAdd \
+    -div-rem-pairs
 
 # This one is a truncated pass pipeline I often use to debug the loop vectorizer
 set -x JLPASSES_UNTIL_LV -tbaa -PropagateJuliaAddrspaces -simplifycfg -dce -sroa -memcpyopt -always-inline -AllocOpt \
