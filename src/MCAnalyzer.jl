@@ -5,6 +5,7 @@ import LLVM
 import LLVM.Interop: @asmcall
 
 using GPUCompiler
+import LLVM_jll
 
 function __init__()
     @assert LLVM.InitializeNativeTarget() == false
@@ -42,13 +43,14 @@ include("reflection.jl")
 # LLVM-MCA
 #=========================================================#
 
-function llvm_mca(f)
-    llvm_mca = "llvm-mca"
-    if haskey(ENV, "LLVM_MCA_PATH")
-        llvm_mca = ENV["LLVM_MCA_PATH"]
+if isdefined(LLVM_jll, :llvm_mca)
+    import LLVM_jll: llvm_mca
+else
+    function llvm_mca(f)
+        llvm_mca = get(ENV, "LLVM_MCA_PATH", joinpath(LLVM_jll.artifact_dir, "tools", "llvm_mca"))
+        @assert !isempty(llvm_mca)
+        f(llvm_mca)
     end
-    @assert !isempty(llvm_mca)
-    f(llvm_mca)
 end
 
 """
