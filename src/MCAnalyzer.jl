@@ -5,12 +5,10 @@ import LLVM
 import LLVM.Interop: @asmcall
 
 using GPUCompiler
-
-const analyzer = Ref{Any}()
+import LLVM_jll
 
 function __init__()
     @assert LLVM.InitializeNativeTarget() == false
-    analyzer[] = iaca
 end
 
 #=========================================================#
@@ -19,7 +17,7 @@ end
 
 module MockRuntime
     signal_exception() = return
-    malloc(sz) = C_NULL
+    malloc(sz) = ccall("extern malloc", llvmcall, Ptr{Int8}, (Int64,), sz)
     report_oom(sz) = return
     report_exception(ex) = return
     report_exception_name(ex) = return
@@ -42,29 +40,17 @@ end
 include("reflection.jl")
 
 #=========================================================#
-# IACA
-#=========================================================#
-
-function iaca(march, objfile, asmfile)
-    iaca_path = "iaca"
-    if haskey(ENV, "IACA_PATH")
-        iaca_path = ENV["IACA_PATH"]
-    end
-    @assert !isempty(iaca_path)
-    Base.run(`$iaca_path -arch $march $objfile`)
-end
-
-#=========================================================#
 # LLVM-MCA
 #=========================================================#
 
-function llvm_mca(march, objfile, asmfile)
-    llvm_mca = "llvm-mca"
-    if haskey(ENV, "LLVM_MCA_PATH")
-        llvm_mca = ENV["LLVM_MCA_PATH"]
+if isdefined(LLVM_jll, :llvm_mca)
+    import LLVM_jll: llvm_mca
+else
+    function llvm_mca(f)
+        llvm_mca = get(ENV, "LLVM_MCA_PATH", joinpath(LLVM_jll.artifact_dir, "tools", "llvm_mca"))
+        @assert !isempty(llvm_mca)
+        f(llvm_mca)
     end
-    @assert !isempty(llvm_mca)
-    Base.run(`$llvm_mca -mcpu $(llvm_march(march)) $asmfile`)
 end
 
 """
@@ -89,13 +75,6 @@ end
 
 analyze(mysum, (Vector{Float64},))
 ```
-
-# Changing the analyzer tool
-
-```julia
-MCAnalyzer.analyzer[] = MCAnalyzer.llvm_mca
-analyze(mysum, (Vector{Float64},))
-```
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
@@ -104,15 +83,15 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     GPUCompiler.finish_module!(job, ir)
 
     mktempdir() do dir
-        objfile = joinpath(dir, "a.out")
         asmfile = joinpath(dir, "a.S")
 
         tm = GPUCompiler.llvm_machine(job.target)
         LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
-        LLVM.emit(tm, ir, LLVM.API.LLVMObjectFile, objfile)
 
         # Now call analyzer
-        Base.invokelatest(analyzer[], march, objfile, asmfile)
+        llvm_mca() do llvm_mca_path
+            Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) $asmfile`)
+        end
     end
     return nothing
 end
