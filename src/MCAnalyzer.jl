@@ -17,7 +17,7 @@ end
 
 module MockRuntime
     signal_exception() = return
-    malloc(sz) = ccall("extern malloc", llvmcall, Core.LLVMPtr{Int8, 0}, (Int64,), sz)
+    malloc(sz) = ccall("extern malloc", llvmcall, Ptr{Int8}, (Int64,), sz)
     report_oom(sz) = return
     report_exception(ex) = return
     report_exception_name(ex) = return
