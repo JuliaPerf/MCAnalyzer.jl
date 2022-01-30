@@ -1,7 +1,7 @@
 name = "MCAnalyzer"
 uuid = "a81df072-f4bb-11e8-03d3-cfaeda626d18"
 authors = ["Valentin Churavy <v.churavy@gmail.com>"]
-version = "0.3.0"
+version = "0.3.1"
 
 [deps]
 GPUCompiler = "61eb1bfa-7361-4325-ad38-22787b887f55"
