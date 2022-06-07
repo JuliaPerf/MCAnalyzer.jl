@@ -78,9 +78,8 @@ analyze(mysum, (Vector{Float64},))
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = GPUCompiler.compile(:llvm, job; kwargs...)
-
-    GPUCompiler.finish_module!(job, ir)
+    mi, _ = GPUCompiler.emit_julia(job)
+    ir, func = GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
