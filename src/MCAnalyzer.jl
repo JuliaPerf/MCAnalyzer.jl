@@ -1,5 +1,5 @@
 module MCAnalyzer
-export mark_start, mark_end, analyze
+export mark_start, mark_end, analyze, timeline, bottleneck, allstats
 
 import LLVM
 import LLVM.Interop: @asmcall
@@ -90,6 +90,64 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
         # Now call analyzer
         llvm_mca() do llvm_mca_path
             Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) $asmfile`)
+        end
+    end
+    return nothing
+end
+
+
+function timeline(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
+    job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
+    mi, _ = GPUCompiler.emit_julia(job)
+    ir, func = GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+
+    mktempdir() do dir
+        asmfile = joinpath(dir, "a.S")
+
+        tm = GPUCompiler.llvm_machine(job.target)
+        LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
+
+        # Now call analyzer
+        llvm_mca() do llvm_mca_path
+            Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) -timeline $asmfile`)
+        end
+    end
+    return nothing
+end
+
+function bottleneck(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
+    job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
+    mi, _ = GPUCompiler.emit_julia(job)
+    ir, func = GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+
+    mktempdir() do dir
+        asmfile = joinpath(dir, "a.S")
+
+        tm = GPUCompiler.llvm_machine(job.target)
+        LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
+
+        # Now call analyzer
+        llvm_mca() do llvm_mca_path
+            Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) -bottleneck-analysis $asmfile`)
+        end
+    end
+    return nothing
+end
+
+function allstats(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
+    job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
+    mi, _ = GPUCompiler.emit_julia(job)
+    ir, func = GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+
+    mktempdir() do dir
+        asmfile = joinpath(dir, "a.S")
+
+        tm = GPUCompiler.llvm_machine(job.target)
+        LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
+
+        # Now call analyzer
+        llvm_mca() do llvm_mca_path
+            Base.run(`$llvm_mca_path -mcpu $(llvm_march(march)) -all-stats $asmfile`)
         end
     end
     return nothing
