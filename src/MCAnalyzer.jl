@@ -95,7 +95,32 @@ function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     return nothing
 end
 
+"""
+    timeline(func, types, march = :SKL)
 
+Analyze a given function `func` with the signature `types` to produce a timeline
+of execution, showing instruction dependencies.
+The specific method needs to be annotated with the `IACA` markers.
+Supported `march` are :HSW, :BDW, :SKL, and :SKX.
+
+See [the documentation of llvm-mca](https://www.llvm.org/docs/CommandGuide/llvm-mca.html#timeline-view) for more information.
+
+# Example
+
+```julia
+function mysum(A)
+    acc = zero(eltype(A))
+    for i in eachindex(A)
+        mark_start()
+        @inbounds acc += A[i]
+    end
+    mark_end()
+    return acc
+end
+
+timeline(mysum, (Vector{Float64},))
+```
+"""
 function timeline(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
     mi, _ = GPUCompiler.emit_julia(job)
@@ -115,6 +140,32 @@ function timeline(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     return nothing
 end
 
+"""
+    bottleneck(func, types, march = :SKL)
+
+Analyze a given function `func` with the signature `types` to produce a report
+of possible bottlenecks during execution.
+The specific method needs to be annotated with the `IACA` markers.
+Supported `march` are :HSW, :BDW, :SKL, and :SKX.
+
+See [the documentation of llvm-mca](https://www.llvm.org/docs/CommandGuide/llvm-mca.html#bottleneck-analysis) for more information.
+
+# Example
+
+```julia
+function mysum(A)
+    acc = zero(eltype(A))
+    for i in eachindex(A)
+        mark_start()
+        @inbounds acc += A[i]
+    end
+    mark_end()
+    return acc
+end
+
+bottleneck(mysum, (Vector{Float64},))
+```
+"""
 function bottleneck(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
     mi, _ = GPUCompiler.emit_julia(job)

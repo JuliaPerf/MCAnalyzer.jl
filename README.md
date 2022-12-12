@@ -8,7 +8,16 @@
 `MCAnalyzer.jl` provides the two functions `mark_start` and `mark_end`  both will insert some special markers into you code.
 `llvm-mca` will then analyse the generated object file and only analyse the parts in between the two markers.
 
-To invoke `llvm-mca` on a specific method that has been annotated use `analyze(func, types)` where `types` is a tuple of types that gives the type signature of the method.
+Currently supported analysis modes:
+
+ * `analyze(function, types)`
+   * Corresponds to a basic analysis with no specific analysis flags
+ * `timeline(function, types)`
+   * Corresponds to a timeline analysis with the `-timeline` flag of llvm-mca
+ * `bottleneck(function, types)`
+   * Corresponds to a bottleneck analysis with the `-bottleneck-analysis` flag of llvm-mca
+
+The analysis is printed to stdout.
 
 ### Supported architectures
 
