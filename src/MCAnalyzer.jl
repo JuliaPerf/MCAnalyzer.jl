@@ -31,11 +31,16 @@ function mcjob(@nospecialize(func), @nospecialize(types);
                cpu::String = (LLVM.version() < v"8") ? "" : unsafe_string(LLVM.API.LLVMGetHostCPUName()),
                features::String=(LLVM.version() < v"8") ? "" : unsafe_string(LLVM.API.LLVMGetHostCPUFeatures()),
                kwargs...)
-    source = methodinstance(typeof(func), Base.to_tuple_type(types))
     target = NativeCompilerTarget(cpu=cpu, features=features)
     params = CompilerParams()
-    config = CompilerConfig(target, params; kernel=false)
-    CompilerJob(source, config), kwargs
+    if VERSION < v"1.8"
+        source = FunctionSpec(func, Base.to_tuple_type(types), #=kernel=# false)
+        CompilerJob(target, source, params), kwargs
+    else
+        source = methodinstance(typeof(func), Base.to_tuple_type(types))
+        config = CompilerConfig(target, params; kernel=false)
+        CompilerJob(source, config), kwargs
+    end
 end
 
 include("reflection.jl")
@@ -79,7 +84,12 @@ analyze(mysum, (Vector{Float64},))
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    ir, func = if VERSION < v"1.8"
+        mi, _ = GPUCompiler.emit_julia(job)
+        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+    else
+        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
@@ -123,7 +133,12 @@ timeline(mysum, (Vector{Float64},))
 """
 function timeline(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, _ = GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    ir, func = if VERSION < v"1.8"
+        mi, _ = GPUCompiler.emit_julia(job)
+        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+    else
+        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
@@ -167,7 +182,12 @@ bottleneck(mysum, (Vector{Float64},))
 """
 function bottleneck(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, _ = GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    ir, func = if VERSION < v"1.8"
+        mi, _ = GPUCompiler.emit_julia(job)
+        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+    else
+        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
@@ -185,7 +205,12 @@ end
 
 function allstats(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    ir, func = if VERSION < v"1.8"
+        mi, _ = GPUCompiler.emit_julia(job)
+        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+    else
+        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+    end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
