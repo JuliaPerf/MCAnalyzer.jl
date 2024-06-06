@@ -84,17 +84,19 @@ analyze(mysum, (Vector{Float64},))
 """
 function analyze(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = if VERSION < v"1.8"
+    ir, func, target = if VERSION < v"1.8"
         mi, _ = GPUCompiler.emit_julia(job)
-        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)..., job.target)
     else
-        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (JuliaContext() do ctx
+            GPUCompiler.compile(:llvm, job; validate=false, only_entry=false, kwargs...)
+        end..., job.config.target)
     end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
 
-        tm = GPUCompiler.llvm_machine(job.target)
+        tm = GPUCompiler.llvm_machine(target)
         LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
 
         # Now call analyzer
@@ -133,17 +135,19 @@ timeline(mysum, (Vector{Float64},))
 """
 function timeline(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = if VERSION < v"1.8"
+    ir, func, target = if VERSION < v"1.8"
         mi, _ = GPUCompiler.emit_julia(job)
-        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)..., job.target)
     else
-        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (JuliaContext() do ctx
+            GPUCompiler.compile(:llvm, job; validate=false, only_entry=false, kwargs...)
+        end..., job.config.target)
     end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
 
-        tm = GPUCompiler.llvm_machine(job.target)
+        tm = GPUCompiler.llvm_machine(target)
         LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
 
         # Now call analyzer
@@ -182,17 +186,19 @@ bottleneck(mysum, (Vector{Float64},))
 """
 function bottleneck(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = if VERSION < v"1.8"
+    ir, func, target = if VERSION < v"1.8"
         mi, _ = GPUCompiler.emit_julia(job)
-        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)..., job.target)
     else
-        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (JuliaContext() do ctx
+            GPUCompiler.compile(:llvm, job; validate=false, only_entry=false, kwargs...)
+        end..., job.config.target)
     end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
 
-        tm = GPUCompiler.llvm_machine(job.target)
+        tm = GPUCompiler.llvm_machine(target)
         LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
 
         # Now call analyzer
@@ -205,17 +211,19 @@ end
 
 function allstats(@nospecialize(func), @nospecialize(tt), march=:SKL; kwargs...)
     job, kwargs = mcjob(func, tt; cpu=llvm_march(march), kwargs...)
-    ir, func = if VERSION < v"1.8"
+    ir, func, target = if VERSION < v"1.8"
         mi, _ = GPUCompiler.emit_julia(job)
-        GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (GPUCompiler.emit_llvm(job, mi; ctx=JuliaContext(), only_entry=false, kwargs...)..., job.target)
     else
-        GPUCompiler.compile(:llvm, job; ctx=JuliaContext(), only_entry=false, kwargs...)
+        (JuliaContext() do ctx
+            GPUCompiler.compile(:llvm, job; validate=false, only_entry=false, kwargs...)
+        end..., job.config.target)
     end
 
     mktempdir() do dir
         asmfile = joinpath(dir, "a.S")
 
-        tm = GPUCompiler.llvm_machine(job.target)
+        tm = GPUCompiler.llvm_machine(target)
         LLVM.emit(tm, ir, LLVM.API.LLVMAssemblyFile, asmfile)
 
         # Now call analyzer

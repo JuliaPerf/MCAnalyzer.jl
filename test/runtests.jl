@@ -28,6 +28,22 @@ function mysum(A)
     return acc
 end
 
+@testset "Regular API" begin
+    @testset for f in (analyze, timeline, bottleneck, allstats)
+        mktemp() do path, io
+            @test begin
+                redirect_stdout(io) do
+                    f(mysum, (Vector{Int},))
+                end
+                f = read(path, String)
+                # this is just to test that *something* is printed
+                # i.e., whether the call succeeds at all
+                occursin("[0] Code Region", f)
+            end
+        end
+    end
+end
+
 let buf = IOBuffer()
     code_native(buf, mysum, Tuple{Vector{Float64}})
     asm = String(take!(buf))
